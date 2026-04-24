@@ -27,6 +27,10 @@ export type AnalysisReport = {
   raw_metrics: Record<string, unknown>
 }
 
+export type AnalysisHistoryItem = TaskSummary & {
+  summary: string
+}
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 
@@ -38,7 +42,7 @@ async function parseApiResponse<T>(response: Response): Promise<T> {
     const message =
       typeof detail === "string"
         ? detail
-        : detail?.message ?? `请求失败：${response.status}`
+        : (detail?.message ?? `请求失败：${response.status}`)
     throw new Error(message)
   }
 
@@ -58,9 +62,23 @@ export async function createAnalysisTask(file: File): Promise<TaskSummary> {
 }
 
 export async function getAnalysisReport(
-  taskId: string,
+  taskId: string
 ): Promise<AnalysisReport> {
   const response = await fetch(`${API_BASE_URL}/api/tasks/${taskId}/report`)
   return parseApiResponse<AnalysisReport>(response)
 }
 
+export async function listAnalysisHistory(): Promise<AnalysisHistoryItem[]> {
+  const response = await fetch("/api/history")
+  const payload = await parseApiResponse<{ history: AnalysisHistoryItem[] }>(
+    response
+  )
+  return payload.history
+}
+
+export async function getHistoryReport(
+  taskId: string
+): Promise<AnalysisReport> {
+  const response = await fetch(`/api/history/${taskId}/report`)
+  return parseApiResponse<AnalysisReport>(response)
+}
