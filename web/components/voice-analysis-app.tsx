@@ -29,49 +29,50 @@ export function VoiceAnalysisApp() {
   const [isLoadingAiAnalysis, setIsLoadingAiAnalysis] = useState(false)
   const [isGeneratingAiAnalysis, setIsGeneratingAiAnalysis] = useState(false)
 
-  const refreshHistory = useCallback(async () => {
-    setIsLoadingHistory(true)
+  const refreshHistory = useCallback(async (options?: {
+    isActive?: () => boolean
+    silent?: boolean
+  }) => {
+    const isActive = options?.isActive ?? (() => true)
+
+    if (!options?.silent) {
+      setIsLoadingHistory(true)
+    }
+
     try {
-      setHistory(await listAnalysisHistory())
+      const nextHistory = await listAnalysisHistory()
+      if (isActive()) {
+        setHistory(nextHistory)
+      }
     } catch (nextError) {
-      setError(
-        nextError instanceof Error ? nextError.message : "历史加载失败。"
-      )
+      if (isActive()) {
+        setError(
+          nextError instanceof Error ? nextError.message : "历史加载失败。"
+        )
+      }
     } finally {
-      setIsLoadingHistory(false)
+      if (isActive() && !options?.silent) {
+        setIsLoadingHistory(false)
+      }
     }
   }, [])
 
   useEffect(() => {
     let isMounted = true
 
-    async function loadHistory() {
-      try {
-        const nextHistory = await listAnalysisHistory()
-        if (isMounted) {
-          setHistory(nextHistory)
-        }
-      } catch (nextError) {
-        if (isMounted) {
-          setError(
-            nextError instanceof Error ? nextError.message : "历史加载失败。"
-          )
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingHistory(false)
-        }
-      }
-    }
+    const isActive = () => isMounted
 
-    void loadHistory()
-    const intervalId = setInterval(() => void loadHistory(), 15000)
+    void refreshHistory({ isActive })
+    const intervalId = setInterval(
+      () => void refreshHistory({ isActive, silent: true }),
+      15000
+    )
 
     return () => {
       isMounted = false
       clearInterval(intervalId)
     }
-  }, [])
+  }, [refreshHistory])
 
   function startNewSession() {
     setFile(null)
@@ -107,7 +108,7 @@ export function VoiceAnalysisApp() {
         setActiveTaskId(task.task_id)
         setFile(null)
         setIsUploadDialogOpen(false)
-        await refreshHistory()
+        await refreshHistory({ silent: true })
         throw new Error(task.error?.message ?? "分析任务失败。")
       }
       const nextReport = await getAnalysisReport(task.task_id)
@@ -115,7 +116,7 @@ export function VoiceAnalysisApp() {
       setActiveTaskId(task.task_id)
       setFile(null)
       setIsUploadDialogOpen(false)
-      await refreshHistory()
+      await refreshHistory({ silent: true })
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "提交失败。")
     } finally {
@@ -171,8 +172,8 @@ export function VoiceAnalysisApp() {
   }
 
   return (
-    <main className="min-h-svh bg-neutral-50 text-neutral-950">
-      <div className="grid min-h-svh lg:grid-cols-[300px_1fr]">
+    <main className="h-svh overflow-hidden bg-neutral-50 text-neutral-950">
+      <div className="grid h-full min-h-0 grid-rows-[auto_1fr] overflow-hidden lg:grid-cols-[300px_1fr] lg:grid-rows-1">
         <HistorySidebar
           activeTaskId={activeTaskId}
           history={history}
@@ -182,7 +183,7 @@ export function VoiceAnalysisApp() {
           onSelect={openHistoryItem}
         />
 
-        <section className="min-w-0 px-4 py-4 sm:px-6 lg:px-8">
+        <section className="min-h-0 min-w-0 overflow-y-auto px-4 py-4 sm:px-6 lg:px-8">
           <div className="mx-auto flex max-w-5xl flex-col gap-4">
             <header className="flex flex-col gap-1 border-b border-neutral-200 pb-4">
               <h1 className="text-2xl font-semibold">声音分析</h1>
@@ -248,25 +249,25 @@ function HistorySidebar({
   onSelect: (item: AnalysisHistoryItem) => Promise<void>
 }) {
   return (
-    <aside className="border-b border-neutral-200 bg-white lg:border-r lg:border-b-0">
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-4">
+    <aside className="min-h-0 border-b border-neutral-200 bg-white lg:border-r lg:border-b-0">
+      <div className="flex max-h-[36svh] min-h-0 flex-col lg:h-full lg:max-h-none">
+        <div className="shrink-0 flex items-center justify-between border-b border-neutral-200 px-4 py-4">
           <h2 className="text-base font-semibold">历史分析</h2>
           <Button
             className={[
               "h-8 px-3",
               isUploadDialogOpen
-                ? "bg-neutral-900 text-white hover:bg-neutral-800"
+                ? "border-neutral-300 bg-neutral-100 text-neutral-950 hover:bg-neutral-100"
                 : "",
             ].join(" ")}
             onClick={onNewSession}
-            variant={isUploadDialogOpen ? "default" : "outline"}
+            variant="outline"
           >
             new session
           </Button>
         </div>
 
-        <div className="max-h-72 overflow-auto p-2 lg:max-h-none lg:flex-1">
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {isLoading ? (
             <p className="px-2 py-6 text-sm text-neutral-500">加载中...</p>
           ) : history.length === 0 ? (
@@ -278,7 +279,7 @@ function HistorySidebar({
                   className={[
                     "rounded-lg border px-3 py-3 text-left transition",
                     activeTaskId === item.task_id
-                      ? "border-neutral-900 bg-neutral-900 text-white"
+                      ? "border-neutral-300 bg-neutral-100 text-neutral-950 shadow-xs"
                       : "border-transparent text-neutral-800 hover:border-neutral-200 hover:bg-neutral-50",
                   ].join(" ")}
                   key={item.task_id}
@@ -288,17 +289,16 @@ function HistorySidebar({
                     <span className="truncate text-sm font-medium">
                       {formatHistoryTime(item.created_at)}
                     </span>
-                    <StatusBadge status={item.status} />
                   </div>
                   <p
                     className={[
-                      "mt-1 line-clamp-2 text-xs leading-5",
+                      "mt-1 truncate font-mono text-xs leading-5",
                       activeTaskId === item.task_id
-                        ? "text-neutral-200"
+                        ? "text-neutral-600"
                         : "text-neutral-500",
                     ].join(" ")}
                   >
-                    {item.summary}
+                    {item.task_id}
                   </p>
                 </button>
               ))}
@@ -399,21 +399,6 @@ function UploadDialog({
   )
 }
 
-function StatusBadge({ status }: { status: AnalysisHistoryItem["status"] }) {
-  return (
-    <span
-      className={[
-        "shrink-0 rounded-md px-2 py-0.5 text-xs",
-        status === "completed"
-          ? "bg-emerald-100 text-emerald-800"
-          : "bg-red-100 text-red-700",
-      ].join(" ")}
-    >
-      {status === "completed" ? "完成" : "失败"}
-    </span>
-  )
-}
-
 function EmptyReport({ text }: { text: string }) {
   return (
     <div className="flex min-h-72 items-center justify-center text-sm text-neutral-500">
@@ -443,10 +428,7 @@ function ReportView({
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-semibold">{report.summary}</h2>
-              <span className="rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-600">
-                {report.confidence}
-              </span>
+              <h2 className="text-xl font-semibold">基础声学指标</h2>
             </div>
           </div>
           <Button
@@ -454,13 +436,9 @@ function ReportView({
             disabled={isGeneratingAiAnalysis}
             onClick={aiAnalysis ? onRegenerateAiAnalysis : onGenerateAiAnalysis}
             type="button"
-            variant={aiAnalysis ? "outline" : "default"}
+            variant="destructive"
           >
-            {isGeneratingAiAnalysis
-              ? "AI 分析中..."
-              : aiAnalysis
-                ? "重新 AI 分析"
-                : "AI 分析"}
+            {isGeneratingAiAnalysis ? "AI 分析中..." : "AI 分析"}
           </Button>
         </div>
       </div>
@@ -469,7 +447,7 @@ function ReportView({
         <div className="space-y-2">
           {report.notices.map((notice) => (
             <p
-              className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+              className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700"
               key={notice}
             >
               {notice}
@@ -478,33 +456,22 @@ function ReportView({
         </div>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {report.metrics.map((metric) => (
           <article
-            className="rounded-lg border border-neutral-200 bg-white p-4"
+            className="rounded-lg border border-neutral-200 bg-neutral-50/70 px-3 py-2.5"
             key={metric.label}
           >
-            <div className="flex items-start justify-between gap-3">
-              <h3 className="font-semibold text-neutral-800">{metric.label}</h3>
-              <span className="rounded-md bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-700">
-                {metric.status}
-              </span>
+            <div className="flex min-h-12 items-center justify-between gap-3">
+              <h3 className="text-sm font-medium text-neutral-600">
+                {metric.label}
+              </h3>
+              <p className="shrink-0 text-right text-lg font-semibold leading-none text-neutral-950">
+                {metric.value}
+              </p>
             </div>
-            <p className="mt-2 text-2xl font-semibold">{metric.value}</p>
-            <p className="mt-2 text-sm leading-6 text-neutral-600">
-              {metric.explanation}
-            </p>
           </article>
         ))}
-      </div>
-
-      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-        <h3 className="font-semibold">练习建议</h3>
-        <ul className="mt-3 space-y-2 text-sm leading-6 text-neutral-700">
-          {report.recommendations.map((recommendation) => (
-            <li key={recommendation}>{recommendation}</li>
-          ))}
-        </ul>
       </div>
 
       <AiAnalysisView
@@ -527,7 +494,7 @@ function AiAnalysisView({
 }) {
   if (isLoading) {
     return (
-      <div className="rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-500">
+      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
         正在读取 AI 分析...
       </div>
     )
@@ -535,7 +502,7 @@ function AiAnalysisView({
 
   if (isGenerating && !analysis) {
     return (
-      <div className="rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-500">
+      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
         OpenCode 正在读取本地分析结果...
       </div>
     )
@@ -546,14 +513,14 @@ function AiAnalysisView({
   }
 
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-4">
+    <section className="rounded-lg border border-neutral-200 bg-neutral-50/70 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-semibold">AI 分析</h3>
+        <h3 className="font-semibold text-neutral-950">AI 分析</h3>
         <span className="text-xs text-neutral-500">
           {formatHistoryTime(analysis.generated_at)}
         </span>
       </div>
-      <p className="mt-3 text-sm leading-6 text-neutral-700">
+      <p className="mt-3 text-sm leading-6 text-neutral-800">
         {analysis.summary}
       </p>
 
@@ -571,10 +538,13 @@ function AiAnalysisList({ items, title }: { items: string[]; title: string }) {
 
   return (
     <div className="mt-4">
-      <h4 className="text-sm font-medium text-neutral-800">{title}</h4>
-      <ul className="mt-2 space-y-2 text-sm leading-6 text-neutral-700">
+      <h4 className="text-sm font-medium text-neutral-950">{title}</h4>
+      <ul className="mt-2 space-y-1.5 text-sm leading-6 text-neutral-800">
         {items.map((item) => (
-          <li key={item}>{item}</li>
+          <li className="flex gap-2" key={item}>
+            <span className="mt-2 size-1.5 shrink-0 rounded-full bg-neutral-400" />
+            <span>{item}</span>
+          </li>
         ))}
       </ul>
     </div>

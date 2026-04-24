@@ -40,13 +40,9 @@ def build_report(task_id: str, metrics: dict[str, Any]) -> Report:
     hnr = metrics.get("hnr_db")
     formants = metrics.get("formants") or {}
 
-    summary_parts = ["已完成基础声学读取。"]
-    if voiced_duration and duration:
-        summary_parts.append(f"有效发声约占整段音频的 {voiced_duration / duration:.0%}。")
-    if mean_pitch:
-        summary_parts.append("音高轮廓可用于做初步稳定性参考。")
+    summary_parts = ["基础声学指标"]
     if notices:
-        summary_parts.append("本次报告包含质量或配置提示，请优先阅读提示。")
+        summary_parts.append("本次报告包含质量或配置提示。")
 
     metric_cards = [
         MetricValue(
@@ -105,19 +101,12 @@ def build_report(task_id: str, metrics: dict[str, Any]) -> Report:
         ),
     ]
 
-    recommendations = [
-        "重新录制时尽量保持 3 到 15 秒、单人、无伴奏、少混响的干声音频。",
-        "如果音高波动偏大，先用舒适音区做持续元音练习，再观察稳定性变化。",
-        "如果 HNR 偏低或提示噪声较多，优先改善录音环境，再比较声学指标。",
-        "把本报告当作练习参考，不要把单次指标理解为医学结论或固定发声标签。",
-    ]
-
     return Report(
         task_id=task_id,
         summary=" ".join(summary_parts),
         confidence=confidence,
         notices=notices,
         metrics=metric_cards,
-        recommendations=recommendations,
+        recommendations=[],
         raw_metrics=metrics,
     )
