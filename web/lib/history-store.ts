@@ -1,7 +1,7 @@
-import { readdir, readFile } from "node:fs/promises"
+import { readdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 
-import type { AnalysisReport, TaskSummary } from "@/lib/api"
+import type { AiAnalysis, AnalysisReport, TaskSummary } from "@/lib/api"
 
 export type HistoryItem = TaskSummary & {
   summary: string
@@ -18,6 +18,10 @@ function getDataDir() {
 
 async function readJson<T>(filePath: string): Promise<T> {
   return JSON.parse(await readFile(filePath, "utf8")) as T
+}
+
+async function writeJson(filePath: string, value: unknown) {
+  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8")
 }
 
 function isSafeTaskId(taskId: string) {
@@ -77,4 +81,35 @@ export async function readAnalysisReport(
   }
 
   return readJson<AnalysisReport>(path.join(dataDir, taskId, "report.json"))
+}
+
+export function resolveProjectRoot() {
+  return path.resolve(process.cwd(), "..")
+}
+
+export function resolveTaskDir(taskId: string, dataDir = getDataDir()) {
+  if (!isSafeTaskId(taskId)) {
+    throw new Error("Invalid task id")
+  }
+
+  return path.join(dataDir, taskId)
+}
+
+export async function readAiAnalysis(
+  taskId: string,
+  dataDir = getDataDir()
+): Promise<AiAnalysis> {
+  return readJson<AiAnalysis>(
+    path.join(resolveTaskDir(taskId, dataDir), "ai-analysis.json")
+  )
+}
+
+export async function writeAiAnalysis(
+  analysis: AiAnalysis,
+  dataDir = getDataDir()
+) {
+  await writeJson(
+    path.join(resolveTaskDir(analysis.task_id, dataDir), "ai-analysis.json"),
+    analysis
+  )
 }

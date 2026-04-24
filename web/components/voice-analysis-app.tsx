@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useState } from "react"
 
 import {
+  type AiAnalysis,
   type AnalysisHistoryItem,
   type AnalysisReport,
+  createAiAnalysis,
   createAnalysisTask,
+  getAiAnalysis,
   getHistoryReport,
   getAnalysisReport,
   listAnalysisHistory,
@@ -15,6 +18,7 @@ import { Button } from "@/components/ui/button"
 export function VoiceAnalysisApp() {
   const [file, setFile] = useState<File | null>(null)
   const [report, setReport] = useState<AnalysisReport | null>(null)
+  const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis | null>(null)
   const [history, setHistory] = useState<AnalysisHistoryItem[]>([])
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
@@ -22,6 +26,8 @@ export function VoiceAnalysisApp() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const [isLoadingReport, setIsLoadingReport] = useState(false)
+  const [isLoadingAiAnalysis, setIsLoadingAiAnalysis] = useState(false)
+  const [isGeneratingAiAnalysis, setIsGeneratingAiAnalysis] = useState(false)
 
   const refreshHistory = useCallback(async () => {
     setIsLoadingHistory(true)
@@ -69,6 +75,7 @@ export function VoiceAnalysisApp() {
 
   function startNewSession() {
     setFile(null)
+    setAiAnalysis(null)
     setError(null)
     setIsUploadDialogOpen(true)
   }
@@ -92,6 +99,7 @@ export function VoiceAnalysisApp() {
     setIsSubmitting(true)
     setError(null)
     setReport(null)
+    setAiAnalysis(null)
 
     try {
       const task = await createAnalysisTask(file)
@@ -118,6 +126,7 @@ export function VoiceAnalysisApp() {
   async function openHistoryItem(item: AnalysisHistoryItem) {
     setActiveTaskId(item.task_id)
     setFile(null)
+    setAiAnalysis(null)
     setIsUploadDialogOpen(false)
     setError(null)
 
@@ -129,13 +138,35 @@ export function VoiceAnalysisApp() {
 
     setIsLoadingReport(true)
     try {
-      setReport(await getHistoryReport(item.task_id))
+      const nextReport = await getHistoryReport(item.task_id)
+      setReport(nextReport)
+      setIsLoadingAiAnalysis(true)
+      setAiAnalysis(await getAiAnalysis(item.task_id))
     } catch (nextError) {
       setError(
         nextError instanceof Error ? nextError.message : "报告加载失败。"
       )
     } finally {
       setIsLoadingReport(false)
+      setIsLoadingAiAnalysis(false)
+    }
+  }
+
+  async function runAiAnalysis(force = false) {
+    const taskId = activeTaskId ?? report?.task_id
+    if (!taskId) {
+      setError("请先选择一条已完成报告。")
+      return
+    }
+
+    setError(null)
+    setIsGeneratingAiAnalysis(true)
+    try {
+      setAiAnalysis(await createAiAnalysis(taskId, force))
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "AI 分析失败。")
+    } finally {
+      setIsGeneratingAiAnalysis(false)
     }
   }
 
@@ -168,7 +199,14 @@ export function VoiceAnalysisApp() {
               {isLoadingReport ? (
                 <EmptyReport text="正在加载报告..." />
               ) : report ? (
-                <ReportView report={report} />
+                <ReportView
+                  aiAnalysis={aiAnalysis}
+                  isGeneratingAiAnalysis={isGeneratingAiAnalysis}
+                  isLoadingAiAnalysis={isLoadingAiAnalysis}
+                  onGenerateAiAnalysis={() => void runAiAnalysis(false)}
+                  onRegenerateAiAnalysis={() => void runAiAnalysis(true)}
+                  report={report}
+                />
               ) : (
                 <EmptyReport text="从历史中选择报告，或新增 session 上传音频" />
               )}
@@ -384,15 +422,46 @@ function EmptyReport({ text }: { text: string }) {
   )
 }
 
-function ReportView({ report }: { report: AnalysisReport }) {
+function ReportView({
+  aiAnalysis,
+  isGeneratingAiAnalysis,
+  isLoadingAiAnalysis,
+  onGenerateAiAnalysis,
+  onRegenerateAiAnalysis,
+  report,
+}: {
+  aiAnalysis: AiAnalysis | null
+  isGeneratingAiAnalysis: boolean
+  isLoadingAiAnalysis: boolean
+  onGenerateAiAnalysis: () => void
+  onRegenerateAiAnalysis: () => void
+  report: AnalysisReport
+}) {
   return (
     <div className="space-y-6">
       <div>
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-xl font-semibold">{report.summary}</h2>
-          <span className="rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-600">
-            {report.confidence}
-          </span>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-semibold">{report.summary}</h2>
+              <span className="rounded-md bg-neutral-100 px-2 py-1 text-xs text-neutral-600">
+                {report.confidence}
+              </span>
+            </div>
+          </div>
+          <Button
+            className="self-start"
+            disabled={isGeneratingAiAnalysis}
+            onClick={aiAnalysis ? onRegenerateAiAnalysis : onGenerateAiAnalysis}
+            type="button"
+            variant={aiAnalysis ? "outline" : "default"}
+          >
+            {isGeneratingAiAnalysis
+              ? "AI 分析中..."
+              : aiAnalysis
+                ? "重新 AI 分析"
+                : "AI 分析"}
+          </Button>
         </div>
       </div>
 
@@ -437,6 +506,77 @@ function ReportView({ report }: { report: AnalysisReport }) {
           ))}
         </ul>
       </div>
+
+      <AiAnalysisView
+        analysis={aiAnalysis}
+        isGenerating={isGeneratingAiAnalysis}
+        isLoading={isLoadingAiAnalysis}
+      />
+    </div>
+  )
+}
+
+function AiAnalysisView({
+  analysis,
+  isGenerating,
+  isLoading,
+}: {
+  analysis: AiAnalysis | null
+  isGenerating: boolean
+  isLoading: boolean
+}) {
+  if (isLoading) {
+    return (
+      <div className="rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-500">
+        正在读取 AI 分析...
+      </div>
+    )
+  }
+
+  if (isGenerating && !analysis) {
+    return (
+      <div className="rounded-lg border border-neutral-200 bg-white p-4 text-sm text-neutral-500">
+        OpenCode 正在读取本地分析结果...
+      </div>
+    )
+  }
+
+  if (!analysis) {
+    return null
+  }
+
+  return (
+    <section className="rounded-lg border border-neutral-200 bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-semibold">AI 分析</h3>
+        <span className="text-xs text-neutral-500">
+          {formatHistoryTime(analysis.generated_at)}
+        </span>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-neutral-700">
+        {analysis.summary}
+      </p>
+
+      <AiAnalysisList title="关键观察" items={analysis.insights} />
+      <AiAnalysisList title="练习方向" items={analysis.practice_suggestions} />
+      <AiAnalysisList title="注意事项" items={analysis.cautions} />
+    </section>
+  )
+}
+
+function AiAnalysisList({ items, title }: { items: string[]; title: string }) {
+  if (items.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="mt-4">
+      <h4 className="text-sm font-medium text-neutral-800">{title}</h4>
+      <ul className="mt-2 space-y-2 text-sm leading-6 text-neutral-700">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
     </div>
   )
 }

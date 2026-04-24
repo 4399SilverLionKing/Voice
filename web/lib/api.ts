@@ -31,6 +31,15 @@ export type AnalysisHistoryItem = TaskSummary & {
   summary: string
 }
 
+export type AiAnalysis = {
+  task_id: string
+  generated_at: string
+  summary: string
+  insights: string[]
+  practice_suggestions: string[]
+  cautions: string[]
+}
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 
@@ -81,4 +90,29 @@ export async function getHistoryReport(
 ): Promise<AnalysisReport> {
   const response = await fetch(`/api/history/${taskId}/report`)
   return parseApiResponse<AnalysisReport>(response)
+}
+
+export async function getAiAnalysis(
+  taskId: string
+): Promise<AiAnalysis | null> {
+  const response = await fetch(`/api/history/${taskId}/ai-analysis`)
+
+  if (response.status === 404) {
+    return null
+  }
+
+  return parseApiResponse<AiAnalysis>(response)
+}
+
+export async function createAiAnalysis(
+  taskId: string,
+  force = false
+): Promise<AiAnalysis> {
+  const response = await fetch(`/api/history/${taskId}/ai-analysis`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ force }),
+  })
+
+  return parseApiResponse<AiAnalysis>(response)
 }
